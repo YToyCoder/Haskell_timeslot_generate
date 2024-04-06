@@ -1,4 +1,3 @@
-{-# LANGUAGE DataKinds #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use newtype instead of data" #-}
 {-# LANGUAGE InstanceSigs #-}
@@ -7,22 +6,43 @@ module TimeslotGen where
 import Data.Foldable (Foldable(fold))
 import Text.Printf(printf)
 import Data.Map.Strict(Map(..), insert, fromList)
-import Data.Array ( Array, (!), array ) 
+import Data.Array ( Array, (!), array )
 import Data.Array.Base (IArray(unsafeReplace, unsafeAt), mapArray)
-import Data.Map as Map ( empty, foldrWithKey, null, Map, insert )
+import Data.Map as Map ( empty, foldrWithKey, null, Map, insert, lookup )
 import qualified GHC.Arr as Data
 import Numeric (showIntAtBase)
 import Data.Char (intToDigit)
+import Data.Word ( Word8 )
+
+class SerialData a where
+  serialU8 :: a -> [Word8]
 
 -- t : transmit
 -- x : recv
 data TxRole = TxRole { t:: Int, x:: Int}
 
+intToWord8 :: Int -> Word8
+intToWord8 i =
+  if i > 0 && i <= 255 then fromIntegral i
+  else 0
+
+intTo2Word8 :: Int -> [Word8]
+intTo2Word8 i = [intToWord8 i, intToWord8 $ div i 256]
+
+instance SerialData TxRole where
+  serialU8 :: TxRole -> [Word8]
+  serialU8 (TxRole t x) = [intToWord8 t, intToWord8 x]
+
 instance Show TxRole where
   show :: TxRole -> String
   show (TxRole trole xrole)= printf "<t%02d-x%02d>" trole xrole
 
+txRoleReverse :: TxRole -> TxRole
+txRoleReverse (TxRole t x) = TxRole x t
+
 type TxList = [TxRole]
+txListReverse :: TxList -> TxList
+txListReverse = map txRoleReverse
 
 type NetScaleSrcDst = [(Int, TxList)]
 intToBinaryString :: Int -> String
@@ -30,13 +50,13 @@ intToBinaryString n = showIntAtBase 2 intToDigit n ""
 
 gen :: Int -> NetScaleSrcDst
 gen netScale =
-  case genScale of 
+  case genScale of
     0 -> []
     1 -> twoElemsNetScaleTx
     2 -> twoElemsNetScaleTx
-    _ -> 
+    _ ->
       [ (x - 1, gen' x netScale) | x <- [1 .. netScale - 1] ]
-  where 
+  where
     genScale = getGenScale netScale
 
 twoElemsNetScaleTx :: [(Int, [TxRole])]
@@ -46,7 +66,7 @@ getGenScale :: Int -> Int
 getGenScale netScale = netScale + mod netScale 2
 
 gen' :: Int -> Int -> TxList
-gen' kindCnt genScale = 
+gen' kindCnt genScale =
   TxRole start target : get_res 1 (target, target)
   where
     start  = 0
@@ -75,13 +95,13 @@ data TimeslotT = TimeslotT { epoch:: Int, frame :: Int, slot :: Int }
 
 instance Show TimeslotT where
   show :: TimeslotT -> String
-  show (TimeslotT e f s) = printf "%04d-%04d-%04d" e f s
+  show (TimeslotT e f s) = printf "%04d-%02d-%02d" e f s
 
 data TsInfo = TsInfo { _t :: Int, tx_info :: TxList }
 
 instance Show TsInfo where
   show :: TsInfo -> String
-  show (TsInfo t tx) =  show tx 
+  show (TsInfo t tx) =  show tx
 
 type TxInfoT = Map Int TxList
 type TxArrInfoT = Array Int TxList
@@ -89,13 +109,17 @@ type TxArrInfoT = Array Int TxList
 txInfoToString :: TxInfoT -> String
 txInfoToString tx
   | Map.null tx = "[]"
-  | otherwise = 
+  | otherwise =
     Map.foldrWithKey (\k a b -> printf "%08s: %s\n%s" (intToBinaryString k) (show a) b) "" tx
 
-data TimeslotInfo = 
-  TimeslotInfo { timeslotKind :: Int, timeslotInfoRef:: Int } | 
+data TimeslotInfo =
+  TimeslotInfo { timeslotKind :: Int, timeslotInfoRef:: Int } |
   TimeslotInfoRv { timeslotKind :: Int, timeslotInfoRef:: Int } |
   TimeslotInfoIv
+
+tsInfo2Key :: TimeslotInfo -> Int
+tsInfo2Key TimeslotInfoIv = -1
+tsInfo2Key tsi = genTxIndex (timeslotKind tsi) $ timeslotInfoRef tsi
 
 instance Show TimeslotInfo where
   show :: TimeslotInfo -> String
@@ -108,8 +132,8 @@ data TimeslotTable = TimeslotTable {
   frame_size:: Int,
   table :: Array Int TimeslotT,
   infoTable :: Array Int TimeslotInfo ,
-  txInfo :: TxInfoT 
-} 
+  txInfo :: TxInfoT
+}
 
 instance Show TimeslotTable where
   show :: TimeslotTable -> String
@@ -134,19 +158,19 @@ arrToString arr i line_cnt ctx
 arrGet :: Show a => Array Int a -> Int -> a
 arrGet = (Data.Array.!)
 
-data TimeslotGenInfo = 
+data TimeslotGenInfo =
   TimeslotGenInfo {
     timeslot_kind :: Int,
     timeslot_indexs :: [Int],
     tx_size :: Int,
-    tx :: TxArrInfoT} 
+    tx :: TxArrInfoT}
 
 instance Show TimeslotGenInfo where
   show :: TimeslotGenInfo -> String
   show (TimeslotGenInfo kind indexs tx_size tx ) =
-    printf "size: %4d\n%s\n%s" 
+    printf "size: %4d\n%s\n%s"
       tx_size
-      (Prelude.foldr (printf "%02d %s") "" indexs) 
+      (Prelude.foldr (printf "%02d %s") "" indexs)
       (arrToString tx tx_size 1 "")
 
 createTimeslotGen :: [Int] -> Int -> Int -> TimeslotGenInfo
@@ -160,9 +184,9 @@ listToIndexList l = proc' l [] 0
     proc' [] b _ = b
     proc' (e : rest) b i =  proc' rest ((i, e) : b) $ i + 1
 
-data TimeslotScaleInfo = TimeslotScaleInfo { 
-  slot_cnt_in_frame :: Int, 
-  frame_cnt :: Int 
+data TimeslotScaleInfo = TimeslotScaleInfo {
+  slot_cnt_in_frame :: Int,
+  frame_cnt :: Int
 }
 
 genTsTable :: [TimeslotGenInfo] -> TimeslotScaleInfo -> TimeslotTable
@@ -193,30 +217,85 @@ performTimeslotGenProc (TimeslotGenInfo ts_kind timeslot_indexs tx_size tx) ts_t
   action timeslot_indexs ts_table 0
   where
     action [] ts _ = ts
-    action 
-      tsIndexs 
-      (TimeslotTable slot_cnt frame_cnt table info txInfo) tx_index 
+    action
+      tsIndexs
+      (TimeslotTable slot_cnt frame_cnt table info txInfo) tx_index
       =
-      action 
+      action
         rest
         (TimeslotTable
             slot_cnt
             frame_cnt
-            table
-
-            (unsafeReplace 
-              info 
-              replaceTss)
-
-            (Map.insert (genTxIndex ts_kind tx_index)  (arrGet tx tx_index) txInfo))
+            table -- timeslot table
+            (unsafeReplace info replaceTss) -- timeslot info
+            (Map.insert (genTxIndex ts_kind tx_index)  (arrGet tx tx_index) txInfo)) -- timeslot tx
         $ mod (tx_index + 1) tx_size
-          where 
-           (rest, replaceTss ) = case tsIndexs of 
-              ( tse : tse2 : rest ) -> 
-                (rest, 
-                [ (tse, TimeslotInfo ts_kind tx_index), 
+          where
+           (rest, replaceTss ) = case tsIndexs of
+              ( tse : tse2 : rest ) ->
+                (rest,
+                [ (tse, TimeslotInfo ts_kind tx_index),
                   (tse2, TimeslotInfoRv ts_kind tx_index)])
-              ( tse : rest )  -> 
-                (rest, 
-                [ (tse, TimeslotInfo ts_kind tx_index) ]) 
+              ( tse : rest )  ->
+                (rest,
+                [ (tse, TimeslotInfo ts_kind tx_index) ])
 
+data BinTimeslot =
+  BinTimeslot Int {- frame -} Int {- slot -} Int {- kind -} Int {- len -} TxList
+
+instance Show BinTimeslot where
+  show :: BinTimeslot -> String
+  show (BinTimeslot frame slot kind len tx) =
+    printf "[%02d-%02d]: %d -> %02d %s\n" frame slot kind len
+      $ Prelude.foldr (printf "%s %s" . show) "" tx
+
+instance SerialData BinTimeslot where
+  serialU8 :: BinTimeslot -> [Word8]
+  serialU8 (BinTimeslot frame slot kind len tx)=
+    [intToWord8 frame, intToWord8 slot, intToWord8 kind] ++
+    intTo2Word8 len ++
+    Prelude.foldr (\x y  -> serialU8 x ++ y ) [] tx
+
+data BinTimeslotCtx = BinTimeslotCtx { bTimeslots :: [BinTimeslot], fcnt :: Int, scnt :: Int }
+
+instance Show BinTimeslotCtx where
+  show :: BinTimeslotCtx -> String
+  show ctx@(BinTimeslotCtx tss frame_cnt slot_cnt) =
+    printf "frame:%02d slot:%02d\n%s" frame_cnt slot_cnt
+      $ Prelude.foldr (printf "%s%s" . show) "" tss
+
+instance SerialData BinTimeslotCtx where
+  serialU8 :: BinTimeslotCtx -> [Word8]
+  serialU8 (BinTimeslotCtx tss frame_cnt slot_cnt) = 
+    [intToWord8 frame_cnt, intToWord8 slot_cnt] ++ 
+    Prelude.foldr (\x y -> serialU8 x ++ y) [] tss
+
+buildCtx :: TimeslotTable -> BinTimeslotCtx
+buildCtx (TimeslotTable slot_cnt frame table info tx) =
+  proc' (slot_cnt * frame) $ BinTimeslotCtx [] frame slot_cnt
+  where
+    proc' :: Int -> BinTimeslotCtx -> BinTimeslotCtx
+    proc' i bctx@(BinTimeslotCtx timeslots frame_cnt slot_cnt)
+      | i == 0 = bctx
+      | otherwise =
+        proc' (i - 1) $
+          BinTimeslotCtx (putTsi i timeslots) frame_cnt slot_cnt
+    putTsi :: Int -> [BinTimeslot] -> [BinTimeslot]
+    putTsi i tss =
+      let TimeslotT _ frame slot = arrGet table $ i - 1 in
+      case arrGet info $ i - 1 of
+        TimeslotInfoIv -> BinTimeslot frame slot 0 0 [] : tss
+        infoe -> case Map.lookup (tsInfo2Key infoe) tx of
+          Just a -> BinTimeslot frame slot (timeslotKind infoe) 0 txl : tss
+            where txl = case infoe of
+                    TimeslotInfoRv _ _ -> txListReverse a
+                    _ -> a
+          Nothing -> BinTimeslot frame slot 0 0 [] : tss
+{-
+        infoe@(TimeslotInfo tk _)-> case Map.lookup (tsInfo2Key infoe) tx of
+          Just a -> BinTimeslot frame slot tk 0 a : tss
+          Nothing -> BinTimeslot frame slot 0 0 [] : tss
+        infoe@(TimeslotInfoRv tk _)-> case Map.lookup (tsInfo2Key infoe) tx of
+          Just a -> BinTimeslot frame slot tk 0 (txListReverse a) : tss
+          Nothing -> BinTimeslot frame slot 0 0 [] : tss
+-}

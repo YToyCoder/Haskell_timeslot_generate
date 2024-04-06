@@ -1,5 +1,5 @@
 cabal-version:      2.4
-name:               hsk
+name:               htsg
 version:            0.1.0.0
 
 -- A short (one-line) description of the package.
@@ -23,14 +23,11 @@ extra-source-files:
 	CHANGELOG.md
 	README.md
 
-executable hsk
+executable htsg
 	main-is:          Main.hs
 
 	-- Modules included in this executable, other than Main.
-	other-modules: 	LiterateTest 
-									HaskellStart
-									Book
-									TimeslotGen
+	other-modules: TimeslotGen
 
 	-- LANGUAGE extensions used by modules in this package.
 	-- other-extensions:
@@ -38,6 +35,7 @@ executable hsk
 		base ^>=4.17.2.0,
 		containers ^>=0.6.7,
 		array ^>=0.5.4.0,
+		bytestring ^>=0.12.1.0,
 
 	hs-source-dirs:   src
 	default-language: Haskell2010
