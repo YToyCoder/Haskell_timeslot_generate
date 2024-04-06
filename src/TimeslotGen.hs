@@ -13,6 +13,9 @@ import qualified GHC.Arr as Data
 import Numeric (showIntAtBase)
 import Data.Char (intToDigit)
 import Data.Word ( Word8 )
+import Data.ByteString.Builder ( word8, writeFile, word16Dec, byteString )
+import Prelude hiding (writeFile)
+import Data.ByteString.Char8 (pack, length)
 
 class SerialData a where
   serialU8 :: a -> [Word8]
@@ -27,7 +30,7 @@ intToWord8 i =
   else 0
 
 intTo2Word8 :: Int -> [Word8]
-intTo2Word8 i = [intToWord8 i, intToWord8 $ div i 256]
+intTo2Word8 i = [intToWord8 $ mod i 256, intToWord8 $ div i 256]
 
 instance SerialData TxRole where
   serialU8 :: TxRole -> [Word8]
@@ -40,11 +43,12 @@ instance Show TxRole where
 txRoleReverse :: TxRole -> TxRole
 txRoleReverse (TxRole t x) = TxRole x t
 
+type NetScaleSrcDst = [(Int, TxList)]
 type TxList = [TxRole]
+
 txListReverse :: TxList -> TxList
 txListReverse = map txRoleReverse
 
-type NetScaleSrcDst = [(Int, TxList)]
 intToBinaryString :: Int -> String
 intToBinaryString n = showIntAtBase 2 intToDigit n ""
 
@@ -103,14 +107,19 @@ instance Show TsInfo where
   show :: TsInfo -> String
   show (TsInfo t tx) =  show tx
 
-type TxInfoT = Map Int TxList
+data TxListSize = TxListSize Int TxList
+type TxInfoT = Map Int TxListSize
 type TxArrInfoT = Array Int TxList
 
 txInfoToString :: TxInfoT -> String
 txInfoToString tx
   | Map.null tx = "[]"
   | otherwise =
-    Map.foldrWithKey (\k a b -> printf "%08s: %s\n%s" (intToBinaryString k) (show a) b) "" tx
+    Map.foldrWithKey foldFn "" tx
+    -- (\k a b -> printf "%08s: %s\n%s" (intToBinaryString k) (show a) b) "" tx
+    -- Map.foldrWithKey (\k a b -> printf "%08s: %s\n%s" (intToBinaryString k) (show a) b) "" tx
+    where
+      foldFn k (TxListSize l a) = printf "%08s: %s\n%s" (intToBinaryString k) (show a)
 
 data TimeslotInfo =
   TimeslotInfo { timeslotKind :: Int, timeslotInfoRef:: Int } |
@@ -228,7 +237,8 @@ performTimeslotGenProc (TimeslotGenInfo ts_kind timeslot_indexs tx_size tx) ts_t
             frame_cnt
             table -- timeslot table
             (unsafeReplace info replaceTss) -- timeslot info
-            (Map.insert (genTxIndex ts_kind tx_index)  (arrGet tx tx_index) txInfo)) -- timeslot tx
+            let txl = TxListSize (mod tx_size 2) (arrGet tx tx_index)
+              in Map.insert (genTxIndex ts_kind tx_index) txl txInfo) -- timeslot tx
         $ mod (tx_index + 1) tx_size
           where
            (rest, replaceTss ) = case tsIndexs of
@@ -266,8 +276,8 @@ instance Show BinTimeslotCtx where
 
 instance SerialData BinTimeslotCtx where
   serialU8 :: BinTimeslotCtx -> [Word8]
-  serialU8 (BinTimeslotCtx tss frame_cnt slot_cnt) = 
-    [intToWord8 frame_cnt, intToWord8 slot_cnt] ++ 
+  serialU8 (BinTimeslotCtx tss frame_cnt slot_cnt) =
+    [intToWord8 frame_cnt, intToWord8 slot_cnt] ++
     Prelude.foldr (\x y -> serialU8 x ++ y) [] tss
 
 buildCtx :: TimeslotTable -> BinTimeslotCtx
@@ -286,16 +296,17 @@ buildCtx (TimeslotTable slot_cnt frame table info tx) =
       case arrGet info $ i - 1 of
         TimeslotInfoIv -> BinTimeslot frame slot 0 0 [] : tss
         infoe -> case Map.lookup (tsInfo2Key infoe) tx of
-          Just a -> BinTimeslot frame slot (timeslotKind infoe) 0 txl : tss
+          Just txl@(TxListSize l a)-> BinTimeslot frame slot (timeslotKind infoe) l txl : tss
             where txl = case infoe of
                     TimeslotInfoRv _ _ -> txListReverse a
                     _ -> a
           Nothing -> BinTimeslot frame slot 0 0 [] : tss
-{-
-        infoe@(TimeslotInfo tk _)-> case Map.lookup (tsInfo2Key infoe) tx of
-          Just a -> BinTimeslot frame slot tk 0 a : tss
-          Nothing -> BinTimeslot frame slot 0 0 [] : tss
-        infoe@(TimeslotInfoRv tk _)-> case Map.lookup (tsInfo2Key infoe) tx of
-          Just a -> BinTimeslot frame slot tk 0 (txListReverse a) : tss
-          Nothing -> BinTimeslot frame slot 0 0 [] : tss
--}
+
+magicNum = byteString $ pack "ts"
+
+writeTsInFile :: BinTimeslotCtx -> FilePath -> IO ()
+writeTsInFile ctx@(BinTimeslotCtx tss frame_cnt slot_cnt) filePath =
+  writeFile filePath
+    $ mappend magicNum
+    $ Prelude.foldr (mappend . word8 ) mempty
+    $ serialU8 ctx
