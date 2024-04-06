@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+
 module Main where
 
 import Text.Printf (printf)
@@ -14,6 +14,8 @@ import Data.ByteString.Builder (word16Dec, writeFile)
 import Prelude hiding (writeFile)
 import TimeslotGenC (TimeslotTableGenC(TimeslotTableGenC), TimeslotTxC (TimeslotTxC, timeslot_index, kind, mem_size), TimeslotTCWrapper (TimeslotTCWrapper, timeslot))
 import Data.Aeson (decode, decodeFileStrict)
+import TsCmd(TsCmdOption (TsCmdOption, timeslotPrint, buildCtxPrint, binGen), option, cmds)
+import System.Console.CmdArgs ( cmdArgs )
 
 timeslotC2Ctx :: TimeslotTableGenC -> BinTimeslotCtx
 timeslotC2Ctx (TimeslotTableGenC frame slot tx) =
@@ -28,9 +30,56 @@ timeslotBuild (TimeslotTableGenC frame slot tx) =
   where
     tsgl = map
       (\ x -> createTimeslotGen (timeslot_index x) (kind x) (mem_size x)) tx
-    tst = genTsTable tsgl $ TimeslotScaleInfo frame slot
+    tst = genTsTable tsgl $ TimeslotScaleInfo slot frame
 
+data CmdlineProcResult =
+  CmdlineErr { cmdOption:: TsCmdOption , err :: String }
+  | CmdlineSuc { cmdOption :: TsCmdOption, cmdCtx :: BinTimeslotCtx, cmdTst :: TimeslotTable}
 
+printProc :: CmdlineProcResult -> IO CmdlineProcResult
+printProc err@(CmdlineErr opt erro) = return err
+printProc suc@(CmdlineSuc opt ctx tst) = do
+  if timeslotPrint opt then print tst
+  else putStrLn ""
+  if buildCtxPrint opt then print ctx
+  else putStrLn ""
+  return suc
+
+strNotEmptyOr :: String -> String -> String
+strNotEmptyOr [] default_v = default_v
+strNotEmptyOr str _ = str
+
+cmdlinePreProc :: TsCmdOption -> IO TsCmdOption
+cmdlinePreProc opt@(TsCmdOption timeslotPrint buildCtxPrint binGen buildFile)
+  | not timeslotPrint && not buildCtxPrint && null binGen = return opt
+  | otherwise = return $ TsCmdOption timeslotPrint buildCtxPrint binGen $ strNotEmptyOr buildFile "timeslot.conf"
+
+cmdlineProc :: TsCmdOption -> IO CmdlineProcResult
+cmdlineProc opt@(TsCmdOption timeslotPrint buildCtxPrint binGen buildFile)
+  | not timeslotPrint && not buildCtxPrint && null binGen = return $ CmdlineErr opt "no input file"
+  | otherwise = do
+      timeslotc <- decodeFileStrict buildFile :: IO (Maybe TimeslotTCWrapper)
+      case timeslotc of
+        Just tsc -> return $ CmdlineSuc opt ctx tst
+          where (ctx, tst) = timeslotBuild $ timeslot tsc
+        Nothing -> return $ CmdlineErr opt $ printf "decode file(%s) error" buildFile
+
+timeslotBinGenProc :: CmdlineProcResult -> IO ()
+timeslotBinGenProc err@(CmdlineErr opt erro) = return ()
+timeslotBinGenProc suc@(CmdlineSuc opt ctx tst) = 
+  case binGen opt of
+    [] -> return ()
+    outFile -> writeTsInFile ctx outFile
+
+main :: IO ()
+main = do
+  cmdOpt <- cmdArgs cmds
+  cmdOpt <- cmdlinePreProc cmdOpt
+  cmdRes <- cmdlineProc cmdOpt
+  cmdRes <- printProc cmdRes
+  timeslotBinGenProc cmdRes
+  -- putStrLn "Timeslot generator by YangFei."
+{-
 main :: IO ()
 main = do
   timeslotc <- (decodeFileStrict "ts.conf" :: IO (Maybe TimeslotTCWrapper))
@@ -43,6 +92,7 @@ main = do
       where
         (ctx, tst)= timeslotBuild $ timeslot tsc
     Nothing -> print ""
+-}
   -- print (decode tsf :: Maybe TimeslotTCWrapper)
   -- print (decode tx :: Maybe TimeslotTxC)
   -- mapM_ (\(_ , x) -> print x ) (gen 16)
