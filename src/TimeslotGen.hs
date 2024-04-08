@@ -99,7 +99,7 @@ data TimeslotT = TimeslotT { epoch:: Int, frame :: Int, slot :: Int }
 
 instance Show TimeslotT where
   show :: TimeslotT -> String
-  show (TimeslotT e f s) = printf "%04d-%02d-%02d" e f s
+  show (TimeslotT e f s) = printf "%02d-%02d" f s
 
 data TsInfo = TsInfo { _t :: Int, tx_info :: TxList }
 
@@ -116,8 +116,6 @@ txInfoToString tx
   | Map.null tx = "[]"
   | otherwise =
     Map.foldrWithKey foldFn "" tx
-    -- (\k a b -> printf "%08s: %s\n%s" (intToBinaryString k) (show a) b) "" tx
-    -- Map.foldrWithKey (\k a b -> printf "%08s: %s\n%s" (intToBinaryString k) (show a) b) "" tx
     where
       foldFn k (TxListSize l a) = printf "%08s: %s\n%s" (intToBinaryString k) (show a)
 
@@ -132,9 +130,9 @@ tsInfo2Key tsi = genTxIndex (timeslotKind tsi) $ timeslotInfoRef tsi
 
 instance Show TimeslotInfo where
   show :: TimeslotInfo -> String
-  show (TimeslotInfo kind ref)   = printf "+%02d-%04d" kind ref
-  show (TimeslotInfoRv kind ref) = printf "-%02d-%04d" kind ref
-  show TimeslotInfoIv = "?00-0000"
+  show (TimeslotInfo kind ref)   = printf "+%02d-%02d" kind ref
+  show (TimeslotInfoRv kind ref) = printf "-%02d-%02d" kind ref
+  show TimeslotInfoIv = "?00-00"
 
 data TimeslotTable = TimeslotTable {
   slot_cnt :: Int,
@@ -147,7 +145,10 @@ data TimeslotTable = TimeslotTable {
 instance Show TimeslotTable where
   show :: TimeslotTable -> String
   show (TimeslotTable slot_cnt frame_size table info tx) =
-    printf "%s\n%s \n\n%s"
+    printf ">>========= timeslot table\
+            \%s\n\n\
+            \>>========= tx index table%s \n\n\
+            \>>========= tx table\n%s\n"
       (toString table table_size table_size)
       (toString info table_size table_size)
       (txInfoToString tx)

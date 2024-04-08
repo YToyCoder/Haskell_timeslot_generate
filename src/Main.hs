@@ -65,7 +65,7 @@ cmdlineProc :: TsCmdOption -> IO CmdlineProcResult
 cmdlineProc opt@(TsCmdReadBin readFile ) = do
   ioCtx <- readTimeslotFromFile readFile
   case ioCtx of
-    Just ctx -> print ctx
+    Just ctx -> print ctx 
     _ -> printf "read binary file (%s) error" readFile
   return $ CmdlineErr opt "read binary file"
 
@@ -73,7 +73,9 @@ cmdlineProc opt@(TsCmdOption timeslotPrint buildCtxPrint _ binGen buildFile)
   | not timeslotPrint && not buildCtxPrint && null binGen = return $ CmdlineErr opt "no input file"
   | otherwise = do
       timeslotc <- decodeFileStrict buildFile :: IO (Maybe TimeslotTCWrapper)
+      putStrLn "---------------------- timeslot generation info --------------------"
       print timeslotc
+      putStrLn "--------------------------------------------------------------------"
       case timeslotc of
         Just tsc -> 
           return $ CmdlineSuc opt ctx tst
