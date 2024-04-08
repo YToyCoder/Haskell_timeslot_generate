@@ -183,6 +183,8 @@ instance Show TimeslotGenInfo where
       (arrToString tx tx_size 1 "")
 
 createTimeslotGen :: [Int] -> Int -> Int -> TimeslotGenInfo
+createTimeslotGen timeslot_indexs kind 0 = 
+  TimeslotGenInfo kind timeslot_indexs 0 $ array (0,1) [] -- $ array (0, genScale) $ gen netScale
 createTimeslotGen timeslot_indexs kind netScale =
   TimeslotGenInfo kind timeslot_indexs (genScale - 1) $ array (0, genScale) $ gen netScale
   where genScale = getGenScale netScale
@@ -237,9 +239,9 @@ performTimeslotGenProc (TimeslotGenInfo ts_kind timeslot_indexs tx_size tx) ts_t
             frame_cnt
             table -- timeslot table
             (unsafeReplace info replaceTss) -- timeslot info
-            let txl = TxListSize (div (tx_size + 1) 2) (arrGet tx tx_index)
-              in Map.insert (genTxIndex ts_kind tx_index) txl txInfo) -- timeslot tx
-        $ mod (tx_index + 1) tx_size
+            (addTx tx_index txInfo) ) -- timeslot tx
+        $ nextTxIndex tx_index
+        -- mod (tx_index + 1) tx_size
           where
            (rest, replaceTss ) = case tsIndexs of
               ( tse : tse2 : rest ) ->
@@ -249,6 +251,17 @@ performTimeslotGenProc (TimeslotGenInfo ts_kind timeslot_indexs tx_size tx) ts_t
               ( tse : rest )  ->
                 (rest,
                 [ (tse, TimeslotInfo ts_kind tx_index) ])
+
+    addTx :: Int -> TxInfoT -> TxInfoT
+    addTx txi txInfo 
+      | tx_size == 0 = txInfo
+      | otherwise = 
+        let txl = TxListSize (div (tx_size + 1) 2) (arrGet tx txi) 
+        in Map.insert (genTxIndex ts_kind txi) txl txInfo
+    nextTxIndex :: Int -> Int 
+    nextTxIndex i 
+      | tx_size == 0 = 0
+      | otherwise = mod (i + 1) tx_size
 
 data BinTimeslot =
   BinTimeslot Int {- frame -} Int {- slot -} Int {- kind -} Int {- len -} TxList
@@ -301,7 +314,7 @@ buildCtx (TimeslotTable slot_cnt frame table info tx) =
             where txl = case infoe of
                     TimeslotInfoRv _ _ -> txListReverse a
                     _ -> a
-          Nothing -> BinTimeslot frame slot 0 0 [] : tss
+          Nothing -> BinTimeslot frame slot (timeslotKind infoe) 0 [] : tss
 
 magicNum = byteString $ pack "ts"
 
