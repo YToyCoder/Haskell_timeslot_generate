@@ -14,8 +14,11 @@ import Data.ByteString.Builder (word16Dec, writeFile)
 import Prelude hiding (writeFile)
 import TimeslotGenC (TimeslotTableGenC(TimeslotTableGenC), TimeslotTxC (TimeslotTxC, timeslot_index, kind, mem_size), TimeslotTCWrapper (TimeslotTCWrapper, timeslot))
 import Data.Aeson (decode, decodeFileStrict)
-import TsCmd(TsCmdOption (TsCmdOption, timeslotPrint, buildCtxPrint, binGen), option, cmds)
+import TsCmd(TsCmdOption (TsCmdOption, timeslotPrint, buildCtxPrint, binGen, TsCmdReadBin), option, cmds)
 import System.Console.CmdArgs ( cmdArgs )
+import TimeslotRead (readTimeslotFromFile, word8l2ToInt)
+import Data.Word (Word8)
+import qualified Data.ByteString as BS
 
 timeslotC2Ctx :: TimeslotTableGenC -> BinTimeslotCtx
 timeslotC2Ctx (TimeslotTableGenC frame slot tx) =
@@ -50,17 +53,30 @@ strNotEmptyOr [] default_v = default_v
 strNotEmptyOr str _ = str
 
 cmdlinePreProc :: TsCmdOption -> IO TsCmdOption
-cmdlinePreProc opt@(TsCmdOption timeslotPrint buildCtxPrint binGen buildFile)
+cmdlinePreProc opt@(TsCmdOption timeslotPrint buildCtxPrint tsg binGen buildFile)
   | not timeslotPrint && not buildCtxPrint && null binGen = return opt
-  | otherwise = return $ TsCmdOption timeslotPrint buildCtxPrint binGen $ strNotEmptyOr buildFile "timeslot.conf"
+  | otherwise = 
+    return 
+      $ TsCmdOption timeslotPrint buildCtxPrint tsg binGen 
+      $ strNotEmptyOr buildFile "timeslot.conf"
+cmdlinePreProc opt = return opt
 
 cmdlineProc :: TsCmdOption -> IO CmdlineProcResult
-cmdlineProc opt@(TsCmdOption timeslotPrint buildCtxPrint binGen buildFile)
+cmdlineProc opt@(TsCmdReadBin readFile ) = do
+  ioCtx <- readTimeslotFromFile readFile
+  case ioCtx of
+    Just ctx -> print ctx
+    _ -> printf "read binary file (%s) error" readFile
+  return $ CmdlineErr opt "read binary file"
+
+cmdlineProc opt@(TsCmdOption timeslotPrint buildCtxPrint _ binGen buildFile)
   | not timeslotPrint && not buildCtxPrint && null binGen = return $ CmdlineErr opt "no input file"
   | otherwise = do
       timeslotc <- decodeFileStrict buildFile :: IO (Maybe TimeslotTCWrapper)
+      print timeslotc
       case timeslotc of
-        Just tsc -> return $ CmdlineSuc opt ctx tst
+        Just tsc -> 
+          return $ CmdlineSuc opt ctx tst
           where (ctx, tst) = timeslotBuild $ timeslot tsc
         Nothing -> return $ CmdlineErr opt $ printf "decode file(%s) error" buildFile
 
@@ -71,14 +87,22 @@ timeslotBinGenProc suc@(CmdlineSuc opt ctx tst) =
     [] -> return ()
     outFile -> writeTsInFile ctx outFile
 
+-- timeslotBinRead :: TsCmdOption -> IO CmdlineProcResult
+-- timeslotBinRead opt@()
+
 main :: IO ()
 main = do
+  -- print $ word8l2ToInt [1,0]
+  -- ctx <- readTimeslotFromFile "timeslot.bin"
+  -- bytestring <- BS.fromFilePath "timeslot.bin"
+  -- print ctx
+  -- print ctx
   cmdOpt <- cmdArgs cmds
   cmdOpt <- cmdlinePreProc cmdOpt
   cmdRes <- cmdlineProc cmdOpt
   cmdRes <- printProc cmdRes
   timeslotBinGenProc cmdRes
-  -- putStrLn "Timeslot generator by YangFei."
+  putStrLn "Timeslot generator by YangFei."
 {-
 main :: IO ()
 main = do

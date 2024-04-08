@@ -237,7 +237,7 @@ performTimeslotGenProc (TimeslotGenInfo ts_kind timeslot_indexs tx_size tx) ts_t
             frame_cnt
             table -- timeslot table
             (unsafeReplace info replaceTss) -- timeslot info
-            let txl = TxListSize (mod tx_size 2) (arrGet tx tx_index)
+            let txl = TxListSize (div (tx_size + 1) 2) (arrGet tx tx_index)
               in Map.insert (genTxIndex ts_kind tx_index) txl txInfo) -- timeslot tx
         $ mod (tx_index + 1) tx_size
           where
@@ -271,7 +271,8 @@ data BinTimeslotCtx = BinTimeslotCtx { bTimeslots :: [BinTimeslot], fcnt :: Int,
 instance Show BinTimeslotCtx where
   show :: BinTimeslotCtx -> String
   show ctx@(BinTimeslotCtx tss frame_cnt slot_cnt) =
-    printf "frame:%02d slot:%02d\n%s" frame_cnt slot_cnt
+    printf "---------------------- timeslot binary ------------------------\n\
+    \[ frame:%02d slot:%02d ]\n%s" frame_cnt slot_cnt
       $ Prelude.foldr (printf "%s%s" . show) "" tss
 
 instance SerialData BinTimeslotCtx where

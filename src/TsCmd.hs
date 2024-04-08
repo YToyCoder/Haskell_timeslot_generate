@@ -8,9 +8,11 @@ data TsCmdOption =
   TsCmdOption {
     timeslotPrint :: Bool,
     buildCtxPrint :: Bool,
+    tsgPrint :: Bool,
     binGen :: FilePath,
     buildFile :: FilePath
   }
+  | TsCmdReadBin { readBin :: FilePath }
   deriving (Show, Data, Typeable, Eq)
 
 helpMsg :: String
@@ -33,11 +35,18 @@ option :: TsCmdOption
 option = TsCmdOption {
   timeslotPrint = def &= name "printTs" &= help "print timeslot",
   buildCtxPrint = def &= name "printCtx" &= help "print timeslot gen context",
+  tsgPrint = def &= name "printSrc" &= help "print src ctx",
   binGen = def &= name "gen" &= help "generate timeslot table binary file" &= typFile &= opt "timeslot.bin",
   buildFile = def &= name "in" &= help "build timeslot configuration" &= typFile &= opt "ts.def"
 } &= help helpMsg -- "Timeslot generation cmd tool "
   &= details ["Haskell timeslot generator by YangFei", "", binFormatMsg,"To generate timeslot binary data, use:", "htsg.exe --in=FILE --gen=OUT"]
 
+readBinary :: TsCmdOption
+readBinary = TsCmdReadBin { 
+  readBin = def &= name "readBin" &= help "read timeslot binary file" &= typFile &= opt "timeslot.bin"
+} &= details ["Timeslot Binary File Read"]
+
+cmds :: TsCmdOption
 cmds = 
-  modes [option] &= 
+  modes [option, readBinary] &= 
   program "htsg(Haskell version timeslot generator): v0.0.1"
