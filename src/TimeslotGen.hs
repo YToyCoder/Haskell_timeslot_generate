@@ -41,7 +41,7 @@ instance Show TrRole where
   show (TrRole trole xrole)= printf "<t:%02d-r:%02d>" trole xrole
 
 trRoleReverse :: TrRole -> TrRole
-trRoleReverse (TrRole t x) = TrRole x t
+trRoleReverse (TrRole t r) = TrRole r t
 
 type NetScaleSrcDst = [(Int, TrList)]
 type TrList = [TrRole]
