@@ -1,5 +1,5 @@
 module TimeslotRead where
-import TimeslotGen (BinTimeslotCtx (BinTimeslotCtx), BinTimeslot (BinTimeslot), TxRole (TxRole))
+import TimeslotGen (BinTimeslotCtx (BinTimeslotCtx), BinTimeslot (BinTimeslot), TrRole (TrRole))
 import System.IO(withFile, hClose, IOMode(..), hFileSize, hGetContents, openBinaryFile)
 import Data.Word (Word8)
 import qualified Data.ByteString as BS
@@ -29,30 +29,28 @@ readTimeslot (t : s : rest)
       | otherwise = -- Nothing
         case unpackTimeslot wd of
           Nothing -> Nothing
-          Just (ts, rl) -> unpackTimeslotCtx' rl (i - 1) $ ts : tss
+          Just (rl, ts) -> unpackTimeslotCtx' rl (i - 1) $ ts : tss
 
-    unpackTimeslot :: [Word8] -> Maybe (BinTimeslot, [Word8])
+    unpackTimeslot :: [Word8] -> Maybe ([Word8], BinTimeslot)
     unpackTimeslot (frame : slot : kind : l1 : l2 : l) =
-      case unpackTx' l txLen [] of
-        Just (rl, tx) ->
-          Just (
-            BinTimeslot (fromIntegral frame) (fromIntegral slot) (fromIntegral kind) txLen tx,
-            rl)
-
+      case unpackTr' l trLen [] of
         Nothing -> Nothing
-        where txLen = word8l2ToInt [l1, l2]
+        Just (rl, tr) ->
+          Just (rl , 
+                BinTimeslot (fromIntegral frame) (fromIntegral slot) (fromIntegral kind) trLen tr)
+        where trLen = word8l2ToInt [l1, l2]
     unpackTimeslot _ = Nothing
 
-    unpackTx' l size tx_
-      | size == 0 = Just (l, tx_)
+    unpackTr' l size tr_
+      | size == 0 = Just (l, tr_)
       | otherwise =
-        case unpackTx l of
+        case unpackTr l of
           Nothing -> Nothing
-          Just (rl, e) -> unpackTx' rl (size - 1) $ e : tx_
+          Just (rl, e) -> unpackTr' rl (size - 1) $ e : tr_
 
-    unpackTx :: [Word8] -> Maybe ([Word8],TxRole)
-    unpackTx (t : x : l) = Just (l, TxRole (fromIntegral t) $ fromIntegral x)
-    unpackTx _ = Nothing
+    unpackTr :: [Word8] -> Maybe ([Word8],TrRole)
+    unpackTr (t : r : l) = Just (l, TrRole (fromIntegral t) $ fromIntegral r)
+    unpackTr _ = Nothing
 
 readTimeslot _ = Nothing
 
