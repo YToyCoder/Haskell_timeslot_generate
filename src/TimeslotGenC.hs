@@ -29,7 +29,7 @@ instance FromJSON TimeslotTxC where
 data TimeslotTableGenC = TimeslotTableGenC {
   frame :: Int,
   slot :: Int,
-  tx :: [TimeslotTxC]
+  tr :: [TimeslotTxC]
   } deriving (Generic)
 
 instance Show TimeslotTableGenC where
@@ -41,7 +41,7 @@ instance FromJSON TimeslotTableGenC where
     \x -> TimeslotTableGenC
       <$> x .: "frame"
       <*> x .: "slot"
-      <*> x .: "timeslot_tx"
+      <*> x .: "timeslot_tr"
 
 data TimeslotTCWrapper = TimeslotTCWrapper {timeslot:: TimeslotTableGenC}
 

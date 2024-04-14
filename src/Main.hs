@@ -14,11 +14,12 @@ import Data.ByteString.Builder (word16Dec, writeFile)
 import Prelude hiding (writeFile)
 import TimeslotGenC (TimeslotTableGenC(TimeslotTableGenC), TimeslotTxC (TimeslotTxC, timeslot_index, kind, mem_size), TimeslotTCWrapper (TimeslotTCWrapper, timeslot))
 import Data.Aeson (decode, decodeFileStrict)
-import TsCmd(TsCmdOption (TsCmdOption, timeslotPrint, buildCtxPrint, binGen, TsCmdReadBin), option, cmds)
+import TsCmd(TsCmdOption (TsCmdOption, timeslotPrint, buildCtxPrint, binGen, TsCmdReadBin, TsCmdGenConf), option, cmds)
 import System.Console.CmdArgs ( cmdArgs )
 import TimeslotRead (readTimeslotFromFile, word8l2ToInt)
 import Data.Word (Word8)
 import qualified Data.ByteString as BS
+import qualified Prelude
 
 timeslotC2Ctx :: TimeslotTableGenC -> BinTimeslotCtx
 timeslotC2Ctx (TimeslotTableGenC frame slot tx) =
@@ -58,10 +59,27 @@ cmdlinePreProc opt@(TsCmdOption timeslotPrint buildCtxPrint tsg binGen buildFile
   | otherwise = 
     return 
       $ TsCmdOption timeslotPrint buildCtxPrint tsg binGen 
-      $ strNotEmptyOr buildFile "timeslot.conf"
+      $ strNotEmptyOr buildFile "timeslot.json"
 cmdlinePreProc opt = return opt
 
+templateJson = 
+  "{ \n\
+  \\"Timeslot\": \n {\n\
+  \   \"frame\": 10,\n\
+  \   \"slot\": 20,\n\
+  \   \"timeslot_tr\": [\n\
+  \     { \"kind\":1,\n\
+  \       \"mem_size\": 4,\n\
+  \       \"timeslot_index\":[18,19,38,39,58,59,78,79,98,99,118,119]\n\
+  \     },\n\
+  \     { \"kind\":2, \"mem_size\":0, \"timeslot_index\": [0,1,2,3]}\n\
+  \   ]\n }\n}"
+
 cmdlineProc :: TsCmdOption -> IO CmdlineProcResult
+cmdlineProc opt@(TsCmdGenConf out) = do
+  Prelude.writeFile (strNotEmptyOr out "template.json")templateJson
+  return $ CmdlineErr opt "read binary file"
+
 cmdlineProc opt@(TsCmdReadBin readFile ) = do
   ioCtx <- readTimeslotFromFile readFile
   case ioCtx of
