@@ -39,12 +39,13 @@ option = TsCmdOption {
   binGen = def &= name "gen" &= help "generate timeslot table binary file" &= typFile &= opt "timeslot.bin",
   buildFile = def &= name "in" &= help "build timeslot configuration" &= typFile &= opt "ts.def"
 } &= help helpMsg -- "Timeslot generation cmd tool "
-  &= details ["Haskell timeslot generator by YangFei", "", binFormatMsg,"To generate timeslot binary data, use:", "htsg.exe --in=FILE --gen=OUT"]
+  &= name "generate"
+  &= details ["Haskell timeslot generator by YangFei", "", binFormatMsg,"To generate timeslot binary data, use:", "htsg.exe G --in=FILE --gen=OUT"]
 
 readBinary :: TsCmdOption
 readBinary = TsCmdReadBin { 
-  readBin = def &= name "readBin" &= help "read timeslot binary file" &= typFile &= opt "timeslot.bin"
-} &= details ["Timeslot Binary File Read"]
+  readBin = def &= name "bin" &= help "read timeslot binary file" &= typFile &= opt "timeslot.bin"
+} &= name "read" &= details ["Timeslot Binary File Read"]
 
 cmds :: TsCmdOption
 cmds = 
