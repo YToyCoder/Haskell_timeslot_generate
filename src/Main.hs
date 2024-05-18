@@ -6,13 +6,22 @@ import Data.List (insertBy, sortBy)
 import Data.Ord (comparing)
 import Control.Monad (filterM, replicateM)
 import GHC.Base (liftA2)
-import TimeslotGen(gen, TimeslotScaleInfo (TimeslotScaleInfo), genTsTable, createTimeslotGen, buildCtx, SerialData (serialU8), writeTsInFile, intTo2Word8, intToWord8, magicNum, BinTimeslotCtx, TimeslotTable)
+import TimeslotGen(
+  gen, TimeslotScaleInfo (TimeslotScaleInfo),
+  genTsTable, createTimeslotGen, buildCtx,
+  SerialData (serialU8), writeTsInFile, intTo2Word8, intToWord8,
+  magicNum, BinTimeslotCtx, TimeslotTable, TimeslotGenInfo (TimeslotGenInfo),
+  createTimeslotGen_, gen_ex)
 import Data.Foldable (Foldable(fold))
 import Numeric (showIntAtBase)
 import Data.Char (intToDigit)
 import Data.ByteString.Builder (word16Dec, writeFile)
 import Prelude hiding (writeFile)
-import TimeslotGenC (TimeslotTableGenC(TimeslotTableGenC), TimeslotTxC (TimeslotTxC, timeslot_index, kind, mem_size), TimeslotTCWrapper (TimeslotTCWrapper, timeslot))
+import TimeslotGenC (
+  TimeslotTableGenC(TimeslotTableGenC),
+  TimeslotTxC (TimeslotTxC, timeslot_index, kind, mem_size),
+  TimeslotTCWrapper (TimeslotTCWrapper, timeslot),
+  TimeslotConfMode (TimeslotGenByMemS, TimeslotGenByTR, TimeslotGenByMemEx))
 import Data.Aeson (decode, decodeFileStrict)
 import TsCmd(TsCmdOption (TsCmdOption, timeslotPrint, buildCtxPrint, binGen, TsCmdReadBin, TsCmdGenConf), option, cmds)
 import System.Console.CmdArgs ( cmdArgs )
@@ -32,9 +41,17 @@ timeslotBuild :: TimeslotTableGenC -> (BinTimeslotCtx, TimeslotTable)
 timeslotBuild (TimeslotTableGenC frame slot tx) =
   (buildCtx tst, tst)
   where
-    tsgl = map
-      (\ x -> createTimeslotGen (timeslot_index x) (kind x) (mem_size x)) tx
-    tst = genTsTable tsgl $ TimeslotScaleInfo slot frame
+    tsgl = map _map_to_timeslot_gen tx -- create timeslot generate info list
+    tst = genTsTable tsgl $ TimeslotScaleInfo slot frame -- create timeslot table
+    _map_to_timeslot_gen :: TimeslotTxC -> TimeslotGenInfo -- map json file obj to timelsot gen info
+    _map_to_timeslot_gen (TimeslotTxC kd mem_size timeslot_idxs tr_table mode) = 
+      case mode of
+        TimeslotGenByMemS -> 
+          createTimeslotGen timeslot_idxs kd mem_size
+        TimeslotGenByTR -> 
+          createTimeslotGen_ timeslot_idxs kd tr_table
+        TimeslotGenByMemEx -> 
+          createTimeslotGen_ timeslot_idxs kd $ gen_ex mem_size
 
 data CmdlineProcResult =
   CmdlineErr { cmdOption:: TsCmdOption , err :: String }
@@ -77,7 +94,7 @@ templateJson =
 
 cmdlineProc :: TsCmdOption -> IO CmdlineProcResult
 cmdlineProc opt@(TsCmdGenConf out) = do
-  Prelude.writeFile (strNotEmptyOr out "template.json")templateJson
+  Prelude.writeFile (strNotEmptyOr out "template.json") templateJson
   return $ CmdlineErr opt "read binary file"
 
 cmdlineProc opt@(TsCmdReadBin readFile ) = do

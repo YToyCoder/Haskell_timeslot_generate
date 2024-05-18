@@ -2,6 +2,8 @@
 {-# HLINT ignore "Use newtype instead of data" #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# HLINT ignore "Use camelCase" #-}
 module TimeslotGen where
 import Data.Foldable (Foldable(fold))
 import Text.Printf(printf)
@@ -52,14 +54,22 @@ trListReverse = map trRoleReverse
 intToBinaryString :: Int -> String
 intToBinaryString n = showIntAtBase 2 intToDigit n ""
 
+gen_ex :: Int -> [TrList]
+gen_ex scale = case genScale of
+  i | 0 == i || i == 1 || i == 2 -> []
+  i -> [gen' x i True | x <- idxs ]
+  where
+    genScale = getGenScale scale
+    idxs = let (front, end) = splitAt (div genScale 2 - 1) [1 .. genScale - 1] 
+      in end ++ front
+
 gen :: Int -> NetScaleSrcDst
 gen netScale =
   case genScale of
     0 -> []
-    1 -> twoElemsNetScaleTx
-    2 -> twoElemsNetScaleTx
+    i | 1 == i || 2 == i -> twoElemsNetScaleTx
     _ ->
-      [ (x - 1, gen' x netScale) | x <- [1 .. netScale - 1] ]
+      [ (x - 1, gen' x netScale False) | x <- [1 .. netScale - 1] ]
   where
     genScale = getGenScale netScale
 
@@ -69,9 +79,10 @@ twoElemsNetScaleTx = [(0, [TrRole 0 1])]
 getGenScale :: Int -> Int
 getGenScale netScale = netScale + mod netScale 2
 
-gen' :: Int -> Int -> TrList
-gen' kindCnt genScale =
-  TrRole start target : get_res 1 (target, target)
+gen' :: Int -> Int -> Bool -> TrList
+gen' kindCnt genScale reverse_first =
+  (if reverse_first then TrRole target start else TrRole start target) 
+  : get_res 1 (target, target)
   where
     start  = 0
     target = kindCnt
@@ -184,11 +195,19 @@ instance Show TimeslotGenInfo where
       (arrToString tx tx_size 1 "")
 
 createTimeslotGen :: [Int] -> Int -> Int -> TimeslotGenInfo
-createTimeslotGen timeslot_indexs kind 0 = 
+createTimeslotGen timeslot_indexs kind 0 =
   TimeslotGenInfo kind timeslot_indexs 0 $ array (0,1) [] -- $ array (0, genScale) $ gen netScale
 createTimeslotGen timeslot_indexs kind netScale =
   TimeslotGenInfo kind timeslot_indexs (genScale - 1) $ array (0, genScale) $ gen netScale
   where genScale = getGenScale netScale
+
+-- create timeslot generation info from timeslot indexs/ timeslot kind / tr table
+createTimeslotGen_ :: [Int] -> Int -> [TrList] -> TimeslotGenInfo
+createTimeslotGen_ timeslot_idxs kind tr_tab =
+  TimeslotGenInfo kind timeslot_idxs tr_len $ array (0, tr_len + 1) tr_tab_with_idx
+  where
+    tr_len = Prelude.length tr_tab
+    tr_tab_with_idx = zip [0..] tr_tab
 
 listToIndexList :: [a] -> [(Int, a)]
 listToIndexList l = proc' l [] 0
@@ -251,13 +270,13 @@ performTimeslotGenProc (TimeslotGenInfo ts_kind timeslot_indexs tr_size tr) ts_t
                 [ (tse, TimeslotInfo ts_kind tr_index) ])
 
     addTr :: Int -> TrInfoT -> TrInfoT
-    addTr tri trInfo 
+    addTr tri trInfo
       | tr_size == 0 = trInfo
-      | otherwise = 
-        let txl = TrListSize (div (tr_size + 1) 2) (arrGet tr tri) 
+      | otherwise =
+        let txl = TrListSize (div (tr_size + 1) 2) (arrGet tr tri)
         in Map.insert (genTrIndex ts_kind tri) txl trInfo
-    nextTrIndex :: Int -> Int 
-    nextTrIndex i 
+    nextTrIndex :: Int -> Int
+    nextTrIndex i
       | tr_size == 0 = 0
       | otherwise = mod (i + 1) tr_size
 
