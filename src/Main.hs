@@ -89,14 +89,20 @@ templateJson =
   \       \"mem_size\": 4,\n\
   \       \"timeslot_index\":[18,19,38,39,58,59,78,79,98,99,118,119]\n\
   \     },\n\
-  \     { \"kind\":2, \"mem_size\":0, \"timeslot_index\": [0,1,2,3]}\n\
+  \     { \"kind\":2, \"timeslot_index\": [0,1,2,3]},\n\
+  \     { \"kind\":3, \"mode\": \"ByTR\", \"timeslot_index\": [8,9,10,11,12], \n\
+  \       \"tr_tab\": [{\"t\":0,\"r\":1}, {\"t\":2, \"r\":3}]},\n\
+  \     { \"kind\":4, \"mem_size\":4, \"mode\": \"ByMS\", \"timeslot_index\": [4,5,6,7]}\n\
   \   ]\n }\n}"
 
+-- proc cmd line option
 cmdlineProc :: TsCmdOption -> IO CmdlineProcResult
+-- cmd : generate configuration template 
 cmdlineProc opt@(TsCmdGenConf out) = do
   Prelude.writeFile (strNotEmptyOr out "template.json") templateJson
   return $ CmdlineErr opt "read binary file"
 
+-- cmd : read binary timeslot file
 cmdlineProc opt@(TsCmdReadBin readFile ) = do
   ioCtx <- readTimeslotFromFile readFile
   case ioCtx of
@@ -104,6 +110,7 @@ cmdlineProc opt@(TsCmdReadBin readFile ) = do
     _ -> printf "read binary file (%s) error" readFile
   return $ CmdlineErr opt "read binary file"
 
+-- cmd : build timeslot binary file 
 cmdlineProc opt@(TsCmdOption timeslotPrint buildCtxPrint _ binGen buildFile)
   | not timeslotPrint && not buildCtxPrint && null binGen = return $ CmdlineErr opt "no input file"
   | otherwise = do
@@ -117,6 +124,7 @@ cmdlineProc opt@(TsCmdOption timeslotPrint buildCtxPrint _ binGen buildFile)
           where (ctx, tst) = timeslotBuild $ timeslot tsc
         Nothing -> return $ CmdlineErr opt $ printf "decode file(%s) error" buildFile
 
+-- write timeslot to binary file
 timeslotBinGenProc :: CmdlineProcResult -> IO ()
 timeslotBinGenProc err@(CmdlineErr opt erro) = return ()
 timeslotBinGenProc suc@(CmdlineSuc opt ctx tst) = 
@@ -124,47 +132,12 @@ timeslotBinGenProc suc@(CmdlineSuc opt ctx tst) =
     [] -> return ()
     outFile -> writeTsInFile ctx outFile
 
--- timeslotBinRead :: TsCmdOption -> IO CmdlineProcResult
--- timeslotBinRead opt@()
-
 main :: IO ()
 main = do
-  -- print $ word8l2ToInt [1,0]
-  -- ctx <- readTimeslotFromFile "timeslot.bin"
-  -- bytestring <- BS.fromFilePath "timeslot.bin"
-  -- print ctx
-  -- print ctx
-  cmdOpt <- cmdArgs cmds
+  cmdOpt <- cmdArgs cmds -- build cmd options
   cmdOpt <- cmdlinePreProc cmdOpt
   cmdRes <- cmdlineProc cmdOpt
   cmdRes <- printProc cmdRes
   timeslotBinGenProc cmdRes
   putStrLn "Timeslot generator by YangFei."
-{-
-main :: IO ()
-main = do
-  timeslotc <- (decodeFileStrict "ts.conf" :: IO (Maybe TimeslotTCWrapper))
-  case timeslotc of
-    Just tsc -> do
-      print tsc
-      print ctx
-      print tst
-      writeTsInFile ctx "ctx"
-      where
-        (ctx, tst)= timeslotBuild $ timeslot tsc
-    Nothing -> print ""
--}
-  -- print (decode tsf :: Maybe TimeslotTCWrapper)
-  -- print (decode tx :: Maybe TimeslotTxC)
-  -- mapM_ (\(_ , x) -> print x ) (gen 16)
-  -- writeTsInFile ctx "ctx"
-  -- print $ intTo2Word8 0xffff
-  -- writeFile "b16" $ word16Dec 0xffff
-  -- print tst
-  -- print ctx
-    -- ctx = buildCtx tst
-    -- tst = genTsTable 
-    --   [createTimeslotGen [0..4] 1 1, createTimeslotGen [6..20] 2 8] 
-    --   $ 
-    --   TimeslotScaleInfo 10 10
-  -- print $ createTimeslotGen [0..4] 0 8
+

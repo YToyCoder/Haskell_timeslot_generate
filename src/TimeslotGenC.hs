@@ -34,11 +34,13 @@ instance Show TimeslotTxC where
 instance FromJSON TimeslotTxC where
   parseJSON (Object v) = do
       kd <- v .: "kind"
-      ms <- v .: "mem_size"
+      ms <- v .:? "mem_size"
       timeslot_idxs <- v .: "timeslot_index"
       tr_table <- v .:? "tr_tab"
       it_Mode <- v .:? "mode"
-      return $ TimeslotTxC kd ms timeslot_idxs ( fromMaybe [] tr_table ) $ _int_to_timeslot_gen_mode it_Mode
+      return 
+        $ TimeslotTxC kd (fromMaybe 0 ms) timeslot_idxs ( fromMaybe [] tr_table ) 
+        $ _int_to_timeslot_gen_mode it_Mode
       where 
         _int_to_timeslot_gen_mode :: Maybe String -> TimeslotConfMode
         _int_to_timeslot_gen_mode i = 
@@ -46,9 +48,9 @@ instance FromJSON TimeslotTxC where
             Nothing -> TimeslotGenByMemS
             Just v -> 
               case v of
-              "ByMS" -> TimeslotGenByTR
+              "ByTR" -> TimeslotGenByTR
               "ByEx" -> TimeslotGenByMemEx
-              otherwise  -> TimeslotGenByMemS 
+              otherwise  -> TimeslotGenByMemS -- ByMS
 
 instance FromJSON TrRole where
   parseJSON = withObject "Role" $ 
